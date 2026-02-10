@@ -1,19 +1,18 @@
 from fastapi import APIRouter
 from app.kafka.producer import publish_event
-from app.schemas.events import RawEvent
+from app.schemas.events import PaymentAuthorizedEvent, PaymentAuthorizedPayload
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 
 
 @router.post("/ingest")
-def ingest(payload: dict):
-    event = RawEvent(
+def ingest(payload: PaymentAuthorizedPayload):
+    event = PaymentAuthorizedEvent(
         event_id=str(uuid4()),
-        event_type="ingest",
         source="api-producer",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         payload=payload,
     )
 

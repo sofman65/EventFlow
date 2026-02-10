@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: persistent-consumer-java
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_GROUP_ID:persistence-writer-java}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      ack-mode: manual_immediate
+  datasource:
+    url: ${EVENTFLOW_DB_URL:jdbc:postgresql://localhost:5433/eventflow}
+    driver-class-name: ${EVENTFLOW_DB_DRIVER:org.postgresql.Driver}
+    username: ${EVENTFLOW_DB_USERNAME:eventflow}
+    password: ${EVENTFLOW_DB_PASSWORD:eventflow}
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+eventflow:
+  kafka:
+    validated-topic: ${EVENTFLOW_VALIDATED_TOPIC:events.validated.v1}
+    dlq-topic: ${EVENTFLOW_DLQ_TOPIC:events.dlq.v1}
+  service-name: persistent-consumer-java

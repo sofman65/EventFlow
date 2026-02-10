@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eventflow/events.enriched.v1/payment.authorized.v1",
+  "title": "PaymentAuthorizedEnrichedEvent",
+  "description": "Payment authorized event enriched with downstream analytics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "source",
+    "timestamp",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "const": "payment.authorized.v1"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "$ref": "#/$defs/paymentAuthorizedEnrichedPayload"
+    }
+  },
+  "$defs": {
+    "paymentAuthorizedEnrichedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payment_id",
+        "order_id",
+        "amount",
+        "currency",
+        "provider_auth_id",
+        "risk_score"
+      ],
+      "properties": {
+        "payment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "provider_auth_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

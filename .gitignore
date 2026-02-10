@@ -1,3 +1,26 @@
+# Python
 **/.venv/
-__pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data / runtime
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+.env.*
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+*.iml
+
+# Java
+**/target/

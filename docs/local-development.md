@@ -9,7 +9,7 @@ The goal is to mirror production semantics as closely as possible while keeping 
 You need the following installed locally:
 
 - Docker (with Docker Compose v2)
-- Python 3.10+
+- Python 3.9+
 - `curl` (or any HTTP client)
 - Java 17+ (only if running Java consumers)
 
@@ -146,7 +146,13 @@ From any terminal:
 ```bash
 curl -X POST http://localhost:8000/api/ingest \
   -H "Content-Type: application/json" \
-  -d '{"order_id": 123, "amount": 49.90}'
+  -d '{
+    "payment_id": "pay_123",
+    "order_id": "ord_123",
+    "amount": 49.90,
+    "currency": "USD",
+    "provider_auth_id": "auth_abc"
+  }'
 ```
 
 Expected API response:
@@ -161,7 +167,7 @@ Expected API response:
 Expected consumer output:
 
 ```text
-Consumed event <event_id> from partition <n>
+Validated event <event_id> from partition <n> offset <n> -> events.validated.v1
 ```
 
 ## 7. End-to-End Flow (What Just Happened)

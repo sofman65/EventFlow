@@ -1,6 +1,6 @@
 import json
 from confluent_kafka import Producer
-from app.schemas.events import RawEvent
+from app.schemas.events import PaymentAuthorizedEvent
 
 producer = Producer(
     {
@@ -23,11 +23,11 @@ def delivery_report(err, msg):
         )
 
 
-def publish_event(event: RawEvent):
+def publish_event(event: PaymentAuthorizedEvent):
     producer.produce(
         topic=TOPIC,
         key=event.event_id,
-        value=json.dumps(event.dict(), default=str),
+        value=json.dumps(event.model_dump(mode="json")),
         on_delivery=delivery_report,
     )
     producer.poll(0)

@@ -9,6 +9,7 @@ CONSUMER_GROUP_ID = "validator-service"
 RAW_TOPIC = "events.raw.v1"
 VALIDATED_TOPIC = "events.validated.v1"
 DLQ_TOPIC = "events.dlq.v1"
+EXPECTED_EVENT_TYPE = "payment.authorized.v1"
 
 
 consumer = Consumer(
@@ -53,21 +54,40 @@ def validate_event(event: Dict[str, Any]) -> None:
     if not isinstance(event["event_id"], str) or not event["event_id"].strip():
         raise ValueError("event_id must be a non-empty string")
 
+    if event["event_type"] != EXPECTED_EVENT_TYPE:
+        raise ValueError(f"event_type must be {EXPECTED_EVENT_TYPE}")
+
     if not isinstance(event["payload"], dict):
         raise ValueError("payload must be an object")
 
     payload = event["payload"]
-    if "order_id" not in payload:
-        raise ValueError("payload.order_id is required")
+    required_payload_fields = (
+        "payment_id",
+        "order_id",
+        "amount",
+        "currency",
+        "provider_auth_id",
+    )
+    for field in required_payload_fields:
+        if field not in payload:
+            raise ValueError(f"payload.{field} is required")
 
-    if "amount" not in payload:
-        raise ValueError("payload.amount is required")
+    for field in ("payment_id", "order_id", "provider_auth_id"):
+        value = payload[field]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"payload.{field} must be a non-empty string")
 
     amount = payload["amount"]
     if isinstance(amount, bool) or not isinstance(amount, (int, float)):
         raise ValueError("payload.amount must be a number")
     if amount <= 0:
         raise ValueError("payload.amount must be greater than 0")
+
+    currency = payload["currency"]
+    if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+        raise ValueError("payload.currency must be a 3-letter alphabetic code")
+    if currency.upper() != currency:
+        raise ValueError("payload.currency must be uppercase (for example, USD)")
 
 
 def publish_json(topic: str, key: Optional[str], payload: Dict[str, Any]) -> None:

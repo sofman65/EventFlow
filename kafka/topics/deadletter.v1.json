@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eventflow/events.dlq.v1/dead-letter-record",
+  "title": "DeadLetterRecord",
+  "type": "object",
+  "required": [
+    "failed_service",
+    "error_message",
+    "source_topic",
+    "source_partition",
+    "source_offset",
+    "timestamp",
+    "event"
+  ],
+  "properties": {
+    "failed_service": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error_message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_topic": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_partition": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event": {}
+  }
+}
