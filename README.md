@@ -46,9 +46,9 @@ AI enriches data; it does not control the system.
 ```mermaid
 flowchart TB
 
-Clients["External Clients<br/>(Web Apps - Services - Webhooks)"]
+Clients["External Clients (Web Apps, Services, Webhooks)"]
 
-API["API Producer Service<br/>(FastAPI)<br/><br/>- Validation<br/>- Auth / Rate limiting<br/>- Event normalization"]
+API["API Producer Service (FastAPI), Validation, Auth / Rate limiting, Event normalization"]
 
 subgraph Kafka["Kafka Cluster (KRaft Mode)"]
 
