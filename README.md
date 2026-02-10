@@ -4,6 +4,10 @@ EventFlow is an event-driven processing platform designed to support scalable, d
 
 The system enables new processing capabilities (validation, enrichment, analytics, AI, persistence) to be added without modifying existing services, reducing risk and accelerating feature delivery.
 
+## Local Development
+
+For local setup and end-to-end run instructions, see [`docs/local-development.md`](docs/local-development.md).
+
 ## Why EventFlow Exists
 
 Most backend systems fail not because of scale, but because change becomes dangerous.
@@ -203,8 +207,6 @@ Next steps:
 - Introduce AI enrichment
 - Expand observability
 
-## Final Note
+## Local Deevelopment
 
-EventFlow is not a Kafka demo.
-
-It is a change-enabling platform designed to evolve safely as business requirements grow, with AI as an optional capability, not a structural dependency.
+chmod +x kafka/create-topics.sh
