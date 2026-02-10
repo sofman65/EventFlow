@@ -44,80 +44,35 @@ AI enriches data; it does not control the system.
 ## High-Level Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
 
-Clients["External Clients<br/>(Web Apps / Services / Webhooks)"]
+Client["Client / External System"]
 
-API["API Producer Service<br/>(FastAPI)<br/>Validation • Auth • Normalization"]
+API["API Producer<br/>(FastAPI)"]
 
-subgraph Kafka["Kafka Cluster (KRaft Mode)"]
+Raw["Topic<br/>events.raw.v1"]
+Validated["Topic<br/>events.validated.v1"]
+Enriched["Topic<br/>events.enriched.v1"]
+DLQ["Topic<br/>events.dlq.v1"]
 
-    subgraph RawTopic["Topic: events.raw.v1"]
-        R0["Partition 0"]
-        R1["Partition 1"]
-        R2["Partition 2"]
-    end
+Validator["Validator Consumer<br/>(Business rules)"]
+AI["AI Consumer<br/>(AI enrichment)"]
+Persistence["Persistence Consumer<br/>(DB / projections)"]
 
-    subgraph ValidatedTopic["Topic: events.validated.v1"]
-        V0["Partition 0"]
-        V1["Partition 1"]
-        V2["Partition 2"]
-    end
+Client -->|HTTP| API
+API -->|produce| Raw
 
-    subgraph EnrichedTopic["Topic: events.enriched.v1"]
-        E0["Partition 0"]
-        E1["Partition 1"]
-        E2["Partition 2"]
-    end
+Raw -->|consume| Validator
+Validator -->|produce| Validated
+Validator -->|fail| DLQ
 
-    subgraph DLQTopic["Topic: events.dlq.v1"]
-        D0["Partition 0"]
-    end
-end
+Validated -->|consume| AI
+AI -->|produce| Enriched
+AI -->|fail| DLQ
 
-subgraph ValidatorGroup["Consumer Group: validator-service"]
-    Val1["Validator Instance #1"]
-    Val2["Validator Instance #2"]
-end
+Enriched -->|consume| Persistence
+Persistence -->|fail| DLQ
 
-subgraph AIGroup["Consumer Group: ai-enricher"]
-    AI1["AI Instance #1"]
-    AI2["AI Instance #2"]
-end
-
-subgraph PersistenceGroup["Consumer Group: persistence-writer"]
-    DB1["Writer Instance #1"]
-end
-
-Clients -->|HTTP| API
-
-API -->|produce| R0
-API -->|produce| R1
-API -->|produce| R2
-
-R0 --> Val1
-R1 --> Val2
-R2 --> Val1
-
-Val1 -->|produce| V0
-Val2 -->|produce| V1
-
-V0 --> AI1
-V1 --> AI2
-V2 --> AI1
-
-AI1 -->|produce| E0
-AI2 -->|produce| E1
-
-E0 --> DB1
-E1 --> DB1
-E2 --> DB1
-
-Val1 -->|fail| D0
-Val2 -->|fail| D0
-AI1 -->|fail| D0
-AI2 -->|fail| D0
-DB1 -->|fail| D0
 ```
 
 ## How the System Works
