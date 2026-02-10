@@ -46,9 +46,9 @@ AI enriches data; it does not control the system.
 ```mermaid
 flowchart TB
 
-Clients["External Clients (Web Apps / Services / Webhooks)"]
+Clients["External Clients<br/>(Web Apps / Services / Webhooks)"]
 
-API["API Producer Service (FastAPI): Validation, Auth / Rate limiting, Event normalization"]
+API["API Producer Service<br/>(FastAPI)<br/>Validation • Auth • Normalization"]
 
 subgraph Kafka["Kafka Cluster (KRaft Mode)"]
 
@@ -89,10 +89,11 @@ subgraph PersistenceGroup["Consumer Group: persistence-writer"]
     DB1["Writer Instance #1"]
 end
 
-Clients -->|HTTP / REST| API
-API -->|produce (keyed)| R0
-API -->|produce (keyed)| R1
-API -->|produce (keyed)| R2
+Clients -->|HTTP| API
+
+API -->|produce| R0
+API -->|produce| R1
+API -->|produce| R2
 
 R0 --> Val1
 R1 --> Val2
@@ -112,11 +113,11 @@ E0 --> DB1
 E1 --> DB1
 E2 --> DB1
 
-Val1 -->|on failure| D0
-Val2 -->|on failure| D0
-AI1 -->|on failure| D0
-AI2 -->|on failure| D0
-DB1 -->|on failure| D0
+Val1 -->|fail| D0
+Val2 -->|fail| D0
+AI1 -->|fail| D0
+AI2 -->|fail| D0
+DB1 -->|fail| D0
 ```
 
 ## How the System Works
