@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    command: bash -c "kafka-server-start /kafka/config/kraft.properties"
+    ports:
+      - "9092:9092"
+    volumes:
+      - ./kafka/config/kraft.properties:/kafka/config/kraft.properties
