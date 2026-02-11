@@ -218,7 +218,7 @@ Next steps:
 - Add enrichment consumer
 - Introduce AI-driven enrichment
 - Expand anomaly detection and alerting
-- Add automated integration tests and CI
+- Expand CI with automated integration tests
 
 ## Observability
 
