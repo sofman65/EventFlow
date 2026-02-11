@@ -13,6 +13,7 @@ htmlcov/
 *.sqlite
 *.sqlite3
 *.log
+.ci-logs/
 .env
 .env.*
 
