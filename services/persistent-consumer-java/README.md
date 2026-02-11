@@ -21,7 +21,7 @@ Run:
 
 ```bash
 cd infra
-docker compose up -d kafka postgres
+docker compose up -d kafka postgres prometheus grafana
 
 cd ../services/persistent-consumer-java
 mvn spring-boot:run
@@ -37,3 +37,8 @@ mvn spring-boot:run
 - `EVENTFLOW_DB_DRIVER` (default: `org.postgresql.Driver`)
 - `EVENTFLOW_DB_USERNAME` (default: `eventflow`)
 - `EVENTFLOW_DB_PASSWORD` (default: `eventflow`)
+
+## Metrics
+
+- Actuator health: `http://localhost:8080/actuator/health`
+- Prometheus endpoint: `http://localhost:8080/actuator/prometheus`

@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  - job_name: validator-consumer
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8001
+
+  - job_name: analytics-consumer
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8002
+
+  - job_name: persistence-consumer-java
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8080

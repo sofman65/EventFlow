@@ -1,21 +1,39 @@
 # Local Development Guide - EventFlow
 
-This document describes how to run EventFlow locally with a real Kafka broker (KRaft mode), a FastAPI ingestion service, and Kafka consumers.
+This guide is the reproducible local runbook for this public repository.
 
-The goal is to mirror production semantics as closely as possible while keeping local setup simple and deterministic.
+It takes you from a clean state to a verified end-to-end flow:
+
+1. API receives an event.
+2. Validator consumes and validates.
+3. Analytics consumes and exposes metrics.
+4. Java persistence consumer writes to PostgreSQL.
+5. Prometheus and Grafana scrape and visualize metrics.
 
 ## Prerequisites
 
-You need the following installed locally:
+Install these first:
 
-- Docker (with Docker Compose v2)
+- Docker with Compose v2 (`docker compose`)
 - Python 3.9+
-- `curl` (or any HTTP client)
-- Java 17+ (only if running Java consumers)
+- Java 17+
+- Maven 3.9+
+- `curl`
 
-No local Kafka installation is required.
+No host Kafka installation is required.
 
-## Repository Structure (Relevant Parts)
+Quick preflight checks:
+
+```bash
+docker --version
+docker compose version
+python3 --version
+java --version
+mvn -version
+curl --version
+```
+
+## Repository Layout
 
 ```text
 EventFlow/
@@ -23,60 +41,57 @@ EventFlow/
 │   └── docker-compose.yml
 ├── kafka/
 │   └── create-topics.sh
-├── services/
-│   ├── api-producer/
-│   └── validator-consumer/
+├── observability/
+│   ├── prometheus.yml
+│   └── grafana/
+└── services/
+    ├── api-producer/
+    ├── validator-consumer/
+    ├── analytics-consumer/
+    └── persistent-consumer-java/
 ```
 
-Infrastructure, services, and tooling are intentionally separated.
+## 0. Reset to a Clean Local State
 
-## 1. Start Kafka (KRaft Mode)
-
-Kafka runs only in Docker.
-
-From the `infra/` directory:
+Run from repository root:
 
 ```bash
-docker compose up -d kafka
+cd infra
+docker compose down -v --remove-orphans
+cd ..
 ```
 
-Verify Kafka is running:
+This ensures Kafka/PostgreSQL volumes are reset before reproducing the flow.
+
+## 1. Start Infrastructure
+
+From `infra/`:
 
 ```bash
-docker ps
+cd infra
+docker compose up -d kafka postgres prometheus grafana
+docker compose ps
+cd ..
 ```
 
-Expected output includes a running `kafka` container.
+Expected container names:
 
-## 2. Verify Kafka Health
+- `kafka`
+- `eventflow-postgres`
+- `eventflow-prometheus`
+- `eventflow-grafana`
 
-Run Kafka CLI tools inside the container:
+## 2. Create and Verify Topics
 
-```bash
-docker exec -it kafka kafka-topics \
-  --bootstrap-server localhost:9092 \
-  --list
-```
-
-If this command runs without error, Kafka is healthy.
-
-## 3. Create Kafka Topics
-
-Kafka topics are created via a helper script that executes commands inside the Kafka container.
-
-From the repository root:
+From repository root (`EventFlow/`):
 
 ```bash
 chmod +x kafka/create-topics.sh
 ./kafka/create-topics.sh
-```
 
-Verify topics exist:
-
-```bash
-docker exec -it kafka kafka-topics \
+docker exec kafka kafka-topics \
   --bootstrap-server localhost:9092 \
-  --list
+  --list | sort
 ```
 
 Expected topics:
@@ -86,62 +101,65 @@ Expected topics:
 - `events.enriched.v1`
 - `events.dlq.v1`
 
-## 4. Start the Validator Consumer
+## 3. Start Services (One Terminal per Service)
 
-Each service has its own isolated Python environment.
+Use separate terminals for each process.
 
-Create and activate the virtual environment:
+### Terminal A: Validator Consumer
 
 ```bash
 cd services/validator-consumer
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Run the consumer:
-
-```bash
 python app/consumer.py
 ```
 
-Expected output:
+Metrics endpoint: `http://localhost:8001/metrics`
 
-```text
-Validator consumer started...
+### Terminal B: Analytics Consumer
+
+```bash
+cd services/analytics-consumer
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python app/consumer.py
 ```
 
-The consumer will now block and wait for Kafka events.
+Metrics endpoint: `http://localhost:8002/metrics`
 
-## 5. Start the API Producer (FastAPI)
-
-Open a new terminal window.
-
-Create and activate the virtual environment:
+### Terminal C: API Producer
 
 ```bash
 cd services/api-producer
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Run FastAPI:
-
-```bash
 uvicorn app.main:app --reload
 ```
 
-Expected output:
+API endpoints:
 
-```text
-Uvicorn running on http://127.0.0.1:8000
-Application startup complete.
+- `http://localhost:8000/health`
+- `http://localhost:8000/docs`
+
+### Terminal D: Java Persistence Consumer
+
+```bash
+cd services/persistent-consumer-java
+mvn test
+mvn spring-boot:run
 ```
 
-## 6. Send a Test Event
+Metrics endpoint: `http://localhost:8080/actuator/prometheus`
 
-From any terminal:
+## 4. Send Test Events
+
+From a new terminal:
 
 ```bash
 curl -X POST http://localhost:8000/api/ingest \
@@ -155,7 +173,7 @@ curl -X POST http://localhost:8000/api/ingest \
   }'
 ```
 
-Expected API response:
+Expected response shape:
 
 ```json
 {
@@ -164,45 +182,60 @@ Expected API response:
 }
 ```
 
-Expected consumer output:
+Expected runtime logs:
 
-```text
-Validated event <event_id> from partition <n> offset <n> -> events.validated.v1
+- Validator terminal: `Validated event ... -> events.validated.v1`
+- Analytics terminal: `Analytics processed event ...`
+- Persistence terminal: `Stored event ...`
+
+## 5. Verify End-to-End Output
+
+### Verify persistence in PostgreSQL
+
+```bash
+docker exec eventflow-postgres psql -U eventflow -d eventflow -c \
+"SELECT event_id, event_type, source, event_timestamp, stored_at FROM events ORDER BY stored_at DESC LIMIT 5;"
 ```
 
-## 7. End-to-End Flow (What Just Happened)
+### Verify metrics endpoints
 
-```text
-HTTP request
-   |
-FastAPI Ingestion API
-   |
-Kafka Producer
-   |
-events.raw.v1 topic
-   |
-Validator Consumer Group
-   |
-Partition assignment
-   |
-Offset commit
+```bash
+curl -s http://localhost:8001/metrics | grep eventflow_validator_events_validated_total
+curl -s http://localhost:8002/metrics | grep eventflow_analytics_total_processed_total
+curl -s http://localhost:8080/actuator/prometheus | grep eventflow_persistence_stored_total
 ```
 
-This confirms the core event pipeline is operational.
+### Verify observability UIs
 
-## Design Notes
+- Prometheus: `http://localhost:9090/targets`
+- Grafana: `http://localhost:3000` (default: `admin` / `admin`)
+- Dashboard: `EventFlow / EventFlow Streaming Overview`
 
-- Kafka is the only integration mechanism between services.
-- Services do not call each other via HTTP.
-- HTTP exists only at the system boundary (ingestion).
-- Consumers are reactive workers, not servers.
-- Local dev mirrors production semantics (partitions, consumer groups, offsets).
+On the Prometheus Targets page, all of these should be `UP`:
 
-## Common Pitfalls
+- `validator-consumer`
+- `analytics-consumer`
+- `persistence-consumer-java`
 
-- Running `kafka-topics` on the host machine.
-  Kafka CLI tools run inside the container.
-- Forgetting to start FastAPI.
-  Kafka and consumers do not expose HTTP ports.
-- Using a single virtual environment for all services.
-  Each service is isolated by design.
+## 6. Stop the Stack
+
+Stop service terminals with `Ctrl+C`, then:
+
+```bash
+cd infra
+docker compose down
+```
+
+For a full reset (including Kafka/PostgreSQL data):
+
+```bash
+docker compose down -v --remove-orphans
+```
+
+## Troubleshooting
+
+- If `prometheus` shows targets as `DOWN`, confirm the corresponding service process is running on host ports `8001`, `8002`, and `8080`.
+- If Kafka topic creation fails, confirm the `kafka` container is running: `cd infra && docker compose ps`.
+- If Grafana panels look empty, send at least one event first, then refresh the dashboard.
+- If a port is already in use, stop the conflicting process before starting EventFlow services.
+- If you are on Linux and Prometheus cannot reach `host.docker.internal`, confirm Docker supports `host-gateway` and keep the `extra_hosts` entries in `infra/docker-compose.yml`.

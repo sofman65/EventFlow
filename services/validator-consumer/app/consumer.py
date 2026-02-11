@@ -1,9 +1,12 @@
 import json
+import os
+import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
 from confluent_kafka import Consumer, Producer
+from prometheus_client import Counter, Histogram, start_http_server
 
 BOOTSTRAP_SERVERS = "localhost:9092"
 CONSUMER_GROUP_ID = "validator-service"
@@ -11,6 +14,33 @@ RAW_TOPIC = "events.raw.v1"
 VALIDATED_TOPIC = "events.validated.v1"
 DLQ_TOPIC = "events.dlq.v1"
 EXPECTED_EVENT_TYPE = "payment.authorized.v1"
+METRICS_PORT = int(os.getenv("VALIDATOR_METRICS_PORT", "8001"))
+
+VALIDATOR_EVENTS_CONSUMED = Counter(
+    "eventflow_validator_events_consumed_total",
+    "Total raw events consumed by validator-service.",
+    ["topic"],
+)
+VALIDATOR_EVENTS_VALIDATED = Counter(
+    "eventflow_validator_events_validated_total",
+    "Total events validated and forwarded by validator-service.",
+    ["topic"],
+)
+VALIDATOR_EVENTS_DLQ = Counter(
+    "eventflow_validator_events_dlq_total",
+    "Total events routed to DLQ by validator-service.",
+    ["topic"],
+)
+VALIDATOR_PROCESSING_ERRORS = Counter(
+    "eventflow_validator_processing_errors_total",
+    "Total processing errors seen by validator-service.",
+    ["topic"],
+)
+VALIDATOR_PROCESSING_LATENCY = Histogram(
+    "eventflow_validator_processing_latency_seconds",
+    "End-to-end validator processing latency per message.",
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
+)
 
 
 consumer = Consumer(
@@ -128,6 +158,8 @@ def build_dlq_payload(msg, error: Exception, event: Any) -> Dict[str, Any]:
 
 consumer.subscribe([RAW_TOPIC])
 print("Validator consumer started...")
+start_http_server(METRICS_PORT)
+print(f"Validator metrics exposed at http://localhost:{METRICS_PORT}/metrics")
 
 try:
     while True:
@@ -140,6 +172,10 @@ try:
             print(f"Consumer error: {msg.error()}")
             continue
 
+        processing_started = time.perf_counter()
+        topic_name = msg.topic()
+        VALIDATOR_EVENTS_CONSUMED.labels(topic=topic_name).inc()
+
         event: Any = None
         try:
             event = parse_event(msg)
@@ -148,12 +184,14 @@ try:
             event_id = str(event.get("event_id"))
             publish_json(VALIDATED_TOPIC, event_id, event)
             consumer.commit(message=msg, asynchronous=False)
+            VALIDATOR_EVENTS_VALIDATED.labels(topic=topic_name).inc()
 
             print(
                 f"Validated event {event_id} from partition {msg.partition()} "
                 f"offset {msg.offset()} -> {VALIDATED_TOPIC}"
             )
         except Exception as processing_error:
+            VALIDATOR_PROCESSING_ERRORS.labels(topic=topic_name).inc()
             if event is None:
                 raw_value = msg.value()
                 event = (
@@ -168,6 +206,7 @@ try:
             try:
                 publish_json(DLQ_TOPIC, dlq_key, dlq_payload)
                 consumer.commit(message=msg, asynchronous=False)
+                VALIDATOR_EVENTS_DLQ.labels(topic=topic_name).inc()
                 print(
                     f"Sent failed event from partition {msg.partition()} "
                     f"offset {msg.offset()} -> {DLQ_TOPIC}: {processing_error}"
@@ -177,6 +216,8 @@ try:
                     f"Failed to publish to {DLQ_TOPIC} for partition {msg.partition()} "
                     f"offset {msg.offset()}: {dlq_error}"
                 )
+        finally:
+            VALIDATOR_PROCESSING_LATENCY.observe(time.perf_counter() - processing_started)
 
 except KeyboardInterrupt:
     print("\nStopping consumer")

@@ -4,11 +4,48 @@
 
 EventFlow is an event-driven processing platform designed to support scalable, decoupled services that communicate exclusively through Kafka.
 
-The system enables new processing capabilities (validation, enrichment, analytics, AI, persistence) to be added without modifying existing services, reducing risk and accelerating feature delivery.
+EventFlow is designed so new processing capabilities can be added as independent consumers without modifying existing services.
+
+Current implementation includes:
+
+- validation
+- real-time analytics metrics
+- dead-letter handling
+- persistence
+- baseline observability with Prometheus and Grafana
+
+Planned extensions include AI enrichment and additional downstream processors.
 
 ## Local Development
 
-For local setup and end-to-end run instructions, see [`docs/local-development.md`](docs/local-development.md).
+Use the reproducible runbook in [`docs/local-development.md`](docs/local-development.md).
+
+Quickstart (from repository root):
+
+```bash
+cd infra
+docker compose up -d kafka postgres prometheus grafana
+cd ..
+
+chmod +x kafka/create-topics.sh
+./kafka/create-topics.sh
+```
+
+Then start all application services using the exact terminal commands in
+[`docs/local-development.md`](docs/local-development.md) (Section 3, "Start Services").
+
+Service roles:
+
+- `services/validator-consumer` -> `python app/consumer.py`
+- `services/analytics-consumer` -> `python app/consumer.py`
+- `services/api-producer` -> `uvicorn app.main:app --reload`
+- `services/persistent-consumer-java` -> `mvn spring-boot:run`
+
+Core endpoints:
+
+- API docs: `http://localhost:8000/docs`
+- Prometheus targets: `http://localhost:9090/targets`
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
 
 ## Why EventFlow Exists
 
@@ -54,12 +91,13 @@ API["API Producer<br/>(FastAPI)"]
 
 Raw["Topic<br/>events.raw.v1"]
 Validated["Topic<br/>events.validated.v1"]
-Enriched["Topic<br/>events.enriched.v1"]
 DLQ["Topic<br/>events.dlq.v1"]
 
 Validator["Validator Consumer<br/>(Business rules)"]
-AI["AI Consumer<br/>(AI enrichment)"]
-Persistence["Persistence Consumer<br/>(DB / projections)"]
+Analytics["Analytics Consumer<br/>(Metrics fan-out)"]
+Persistence["Persistence Consumer<br/>(PostgreSQL writer)"]
+AI["AI Consumer<br/>(Planned)"]
+Enriched["Topic<br/>events.enriched.v1 (Planned)"]
 
 Client -->|HTTP| API
 API -->|produce| Raw
@@ -68,12 +106,13 @@ Raw -->|consume| Validator
 Validator -->|produce| Validated
 Validator -->|fail| DLQ
 
-Validated -->|consume| AI
-AI -->|produce| Enriched
-AI -->|fail| DLQ
+Validated -->|consume| Analytics
+Validated -->|consume| Persistence
 
-Enriched -->|consume| Persistence
 Persistence -->|fail| DLQ
+Validated -. planned enrichment .-> AI
+AI -. produce .-> Enriched
+AI -. fail .-> DLQ
 
 ```
 
@@ -82,13 +121,15 @@ Persistence -->|fail| DLQ
 1. External clients submit requests via HTTP.
 2. The API Producer validates input and publishes immutable events.
 3. Events flow through Kafka topics, each representing a processing stage.
-4. Consumers subscribe using their own consumer groups.
+4. The validator consumes `events.raw.v1` and forwards valid records to `events.validated.v1`.
 5. Each consumer:
    - reads events
    - performs a single responsibility
-   - emits a new event
-6. Failures are captured in a dead-letter topic, not hidden.
-7. No service knows who consumes its events.
+6. `events.validated.v1` currently fans out to:
+   - analytics consumer (metrics)
+   - persistence consumer (database write)
+7. Failures are captured in a dead-letter topic, not hidden.
+8. No service knows who consumes its events.
 
 ## Topics & Responsibilities
 
@@ -96,7 +137,7 @@ Persistence -->|fail| DLQ
 | --- | --- |
 | `events.raw.v1` | Unprocessed, normalized input events |
 | `events.validated.v1` | Events that passed business & schema validation |
-| `events.enriched.v1` | Events enriched with AI or external data |
+| `events.enriched.v1` | Reserved for planned enrichment stage |
 | `events.dlq.v1` | Failed events with error context |
 
 Topics are versioned and append-only.
@@ -120,8 +161,8 @@ When a consumer fails, the following are published to `events.dlq.v1`:
 
 - the original event
 - error message
-- stack trace
 - failing service name
+- source topic / partition / offset
 - timestamp
 
 This enables:
@@ -141,6 +182,9 @@ Clean HTTP boundary and rapid iteration for producers.
 ### Python / Java (polyglot-ready)
 Services can be rewritten without changing contracts.
 
+### Prometheus + Grafana
+Metrics-first operations for stream processing visibility.
+
 ### AWS-ready
 Maps cleanly to MSK, ECS, and Bedrock AgentCore.
 
@@ -155,16 +199,34 @@ EventFlow intentionally avoids:
 
 ## Project Status
 
-Architectural foundation complete.
+Implemented now:
+
+- FastAPI API producer for `payment.authorized.v1`
+- Python validator consumer with DLQ routing
+- Java persistence consumer writing to PostgreSQL
+- Python analytics consumer for real-time operational metrics
+- Prometheus and Grafana observability stack
 
 Next steps:
 
-- Implement API producer
-- Add validator consumer
-- Define event schemas
-- Introduce AI enrichment
-- Expand observability
+- Add enrichment consumer
+- Introduce AI-driven enrichment
+- Expand anomaly detection and alerting
+- Add automated integration tests and CI
 
-## Local Deevelopment
+## Observability
 
-chmod +x kafka/create-topics.sh
+The local stack includes Prometheus and Grafana.
+
+Start only observability components:
+
+```bash
+cd infra
+docker compose up -d prometheus grafana
+```
+
+Endpoints:
+
+- Prometheus: `http://localhost:9090` (use `http://localhost:9090/targets` to confirm scrapes are `UP`)
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
+- Dashboard: `EventFlow / EventFlow Streaming Overview`
