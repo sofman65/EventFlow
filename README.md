@@ -1,5 +1,7 @@
 # EventFlow Platform
 
+![EventFlow Logo](Logo.png)
+
 EventFlow is an event-driven processing platform designed to support scalable, decoupled services that communicate exclusively through Kafka.
 
 The system enables new processing capabilities (validation, enrichment, analytics, AI, persistence) to be added without modifying existing services, reducing risk and accelerating feature delivery.
