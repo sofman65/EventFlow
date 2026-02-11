@@ -17,6 +17,7 @@ docker compose up -d prometheus grafana
 - Validator consumer: `http://host.docker.internal:8001/metrics`
 - Analytics consumer: `http://host.docker.internal:8002/metrics`
 - Java persistence consumer: `http://host.docker.internal:8080/actuator/prometheus`
+- External payment simulator: `http://host.docker.internal:8003/metrics`
 
 ## Dashboard
 

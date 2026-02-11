@@ -4,11 +4,12 @@ This guide is the reproducible local runbook for this public repository.
 
 It takes you from a clean state to a verified end-to-end flow:
 
-1. API receives an event.
-2. Validator consumes and validates.
-3. Analytics consumes and exposes metrics.
-4. Java persistence consumer writes to PostgreSQL.
-5. Prometheus and Grafana scrape and visualize metrics.
+1. External simulator receives an `/authorize` request.
+2. Simulator sends a signed webhook to EventFlow.
+3. Validator consumes and validates.
+4. Analytics consumes and exposes metrics.
+5. Java persistence consumer writes to PostgreSQL.
+6. Prometheus and Grafana scrape and visualize metrics.
 
 ## Prerequisites
 
@@ -48,7 +49,8 @@ EventFlow/
     ├── api-producer/
     ├── validator-consumer/
     ├── analytics-consumer/
-    └── persistent-consumer-java/
+    ├── persistent-consumer-java/
+    └── external-payment-simulator/
 ```
 
 ## 0. Reset to a Clean Local State
@@ -139,6 +141,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+export PAYMENT_PROVIDER_WEBHOOK_SECRET=eventflow-local-secret
 uvicorn app.main:app --reload
 ```
 
@@ -146,6 +149,7 @@ API endpoints:
 
 - `http://localhost:8000/health`
 - `http://localhost:8000/docs`
+- `http://localhost:8000/api/webhooks/payment-authorized`
 
 ### Terminal D: Java Persistence Consumer
 
@@ -157,19 +161,38 @@ mvn spring-boot:run
 
 Metrics endpoint: `http://localhost:8080/actuator/prometheus`
 
-## 4. Send Test Events
+### Terminal E: External Payment Simulator
+
+```bash
+cd services/external-payment-simulator
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+export EVENTFLOW_WEBHOOK_SIGNING_SECRET=eventflow-local-secret
+export SIMULATOR_AUTO_STREAM_ENABLED=true
+export SIMULATOR_AUTO_STREAM_RPS=5
+uvicorn app.main:app --reload --port 8003
+```
+
+Simulator endpoints:
+
+- `http://localhost:8003/health`
+- `http://localhost:8003/docs`
+- `http://localhost:8003/metrics`
+
+## 4. Send Test Events Through the Simulator
 
 From a new terminal:
 
 ```bash
-curl -X POST http://localhost:8000/api/ingest \
+curl -X POST http://localhost:8003/authorize \
   -H "Content-Type: application/json" \
   -d '{
     "payment_id": "pay_123",
     "order_id": "ord_123",
     "amount": 49.90,
-    "currency": "USD",
-    "provider_auth_id": "auth_abc"
+    "currency": "USD"
   }'
 ```
 
@@ -178,15 +201,37 @@ Expected response shape:
 ```json
 {
   "status": "accepted",
-  "event_id": "..."
+  "event_id": "...",
+  "primary_delivery": {
+    "ok": true
+  }
 }
 ```
 
 Expected runtime logs:
 
+- API producer terminal: `Produced event to events.raw.v1 ...`
 - Validator terminal: `Validated event ... -> events.validated.v1`
 - Analytics terminal: `Analytics processed event ...`
 - Persistence terminal: `Stored event ...`
+
+Force duplicate and corrupted-event behavior:
+
+```bash
+curl -X POST http://localhost:8003/authorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "payment_id": "pay_fault",
+    "order_id": "ord_fault",
+    "amount": 49.90,
+    "currency": "USD",
+    "force_corruption": true,
+    "force_duplicate": true
+  }'
+```
+
+If auto-stream mode is enabled in Terminal E, this manual curl step is optional.
+You should see continuous traffic in Grafana without running a separate shell loop.
 
 ## 5. Verify End-to-End Output
 
@@ -203,6 +248,7 @@ docker exec eventflow-postgres psql -U eventflow -d eventflow -c \
 curl -s http://localhost:8001/metrics | grep eventflow_validator_events_validated_total
 curl -s http://localhost:8002/metrics | grep eventflow_analytics_total_processed_total
 curl -s http://localhost:8080/actuator/prometheus | grep eventflow_persistence_stored_total
+curl -s http://localhost:8003/metrics | grep eventflow_simulator_webhook_attempts_total
 ```
 
 ### Verify observability UIs
@@ -216,6 +262,7 @@ On the Prometheus Targets page, all of these should be `UP`:
 - `validator-consumer`
 - `analytics-consumer`
 - `persistence-consumer-java`
+- `external-payment-simulator`
 
 ## 6. Stop the Stack
 
@@ -234,8 +281,9 @@ docker compose down -v --remove-orphans
 
 ## Troubleshooting
 
-- If `prometheus` shows targets as `DOWN`, confirm the corresponding service process is running on host ports `8001`, `8002`, and `8080`.
+- If `prometheus` shows targets as `DOWN`, confirm the corresponding service process is running on host ports `8001`, `8002`, `8003`, and `8080`.
 - If Kafka topic creation fails, confirm the `kafka` container is running: `cd infra && docker compose ps`.
 - If Grafana panels look empty, send at least one event first, then refresh the dashboard.
 - If a port is already in use, stop the conflicting process before starting EventFlow services.
 - If you are on Linux and Prometheus cannot reach `host.docker.internal`, confirm Docker supports `host-gateway` and keep the `extra_hosts` entries in `infra/docker-compose.yml`.
+- If simulator calls fail with `401` from EventFlow, ensure `PAYMENT_PROVIDER_WEBHOOK_SECRET` and `EVENTFLOW_WEBHOOK_SIGNING_SECRET` match.

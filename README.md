@@ -40,10 +40,12 @@ Service roles:
 - `services/analytics-consumer` -> `python app/consumer.py`
 - `services/api-producer` -> `uvicorn app.main:app --reload`
 - `services/persistent-consumer-java` -> `mvn spring-boot:run`
+- `services/external-payment-simulator` -> `SIMULATOR_AUTO_STREAM_ENABLED=true uvicorn app.main:app --reload --port 8003`
 
 Core endpoints:
 
 - API docs: `http://localhost:8000/docs`
+- Simulator docs: `http://localhost:8003/docs`
 - Prometheus targets: `http://localhost:9090/targets`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 
@@ -86,6 +88,7 @@ AI enriches data; it does not control the system.
 flowchart LR
 
 Client["Client / External System"]
+Provider["External Payment Simulator"]
 
 API["API Producer<br/>(FastAPI)"]
 
@@ -99,8 +102,9 @@ Persistence["Persistence Consumer<br/>(PostgreSQL writer)"]
 AI["AI Consumer<br/>(Planned)"]
 Enriched["Topic<br/>events.enriched.v1 (Planned)"]
 
-Client -->|HTTP| API
-API -->|produce| Raw
+Client -->|POST /authorize| Provider
+Provider -->|signed webhook| API
+API -->|produce raw event| Raw
 
 Raw -->|consume| Validator
 Validator -->|produce| Validated
@@ -119,17 +123,18 @@ AI -. fail .-> DLQ
 ## How the System Works
 
 1. External clients submit requests via HTTP.
-2. The API Producer validates input and publishes immutable events.
-3. Events flow through Kafka topics, each representing a processing stage.
-4. The validator consumes `events.raw.v1` and forwards valid records to `events.validated.v1`.
-5. Each consumer:
+2. The external payment simulator generates `payment.authorized.v1` events and delivers signed webhooks.
+3. The API Producer verifies signatures and publishes raw immutable events.
+4. Events flow through Kafka topics, each representing a processing stage.
+5. The validator consumes `events.raw.v1` and forwards valid records to `events.validated.v1`.
+6. Each consumer:
    - reads events
    - performs a single responsibility
-6. `events.validated.v1` currently fans out to:
+7. `events.validated.v1` currently fans out to:
    - analytics consumer (metrics)
    - persistence consumer (database write)
-7. Failures are captured in a dead-letter topic, not hidden.
-8. No service knows who consumes its events.
+8. Failures are captured in a dead-letter topic, not hidden.
+9. No service knows who consumes its events.
 
 ## Topics & Responsibilities
 
@@ -202,6 +207,7 @@ EventFlow intentionally avoids:
 Implemented now:
 
 - FastAPI API producer for `payment.authorized.v1`
+- External payment simulator with webhook retries, duplicate injection, and corruption injection
 - Python validator consumer with DLQ routing
 - Java persistence consumer writing to PostgreSQL
 - Python analytics consumer for real-time operational metrics
