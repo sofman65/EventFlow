@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
 from confluent_kafka import Consumer, Producer
@@ -77,11 +78,23 @@ def validate_event(event: Dict[str, Any]) -> None:
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"payload.{field} must be a non-empty string")
 
-    amount = payload["amount"]
-    if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+    amount_raw = payload["amount"]
+    if isinstance(amount_raw, bool):
         raise ValueError("payload.amount must be a number")
+
+    try:
+        amount = Decimal(str(amount_raw))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("payload.amount must be a number")
+
+    if not amount.is_finite():
+        raise ValueError("payload.amount must be a finite number")
+
     if amount <= 0:
         raise ValueError("payload.amount must be greater than 0")
+
+    # Normalize for downstream contracts that expect JSON number semantics.
+    payload["amount"] = float(amount)
 
     currency = payload["currency"]
     if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
