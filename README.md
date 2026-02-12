@@ -2,19 +2,29 @@
 
 ![EventFlow Logo](Logo.png)
 
-EventFlow is an event-driven processing platform designed to support scalable, decoupled services that communicate exclusively through Kafka.
+EventFlow is a payment event ingestion and distribution backbone built to demonstrate production-oriented event-driven architecture.
 
-EventFlow is designed so new processing capabilities can be added as independent consumers without modifying existing services.
+It models how an external payment provider emits a `payment.authorized.v1` event that flows through validation, analytics, and persistence stages using Kafka — with explicit contracts, dead-letter handling, and operational observability.
 
-Current implementation includes:
+This repository focuses on architectural correctness, failure isolation, and deployment clarity.
 
-- validation
-- real-time analytics metrics
-- dead-letter handling
-- persistence
-- baseline observability with Prometheus and Grafana
+It is not a feature-heavy demo. It is a systems design exercise.
 
-Planned extensions include AI enrichment and additional downstream processors.
+---
+
+## What This Project Demonstrates
+
+- Safe external webhook ingestion
+- Immutable event contracts
+- Multi-stage processing with isolated responsibilities
+- Dead-letter routing for failure transparency
+- Multi-consumer fan-out
+- Replay-safe design
+- Metrics-first observability
+- Polyglot services (Python + Java)
+- Reproducible local environment
+- Cloud deployment baseline (ECS + MSK + RDS)
+
 
 ## Local Development
 
@@ -198,8 +208,21 @@ Services can be rewritten without changing contracts.
 ### Prometheus + Grafana
 Metrics-first operations for stream processing visibility.
 
-### AWS-ready
-Maps cleanly to MSK, ECS, and Bedrock AgentCore.
+### AWS Deployment (Terraform)
+
+Infrastructure scaffold:
+
+Amazon MSK
+
+ECS Fargate
+
+RDS PostgreSQL
+
+ECR
+
+CI/CD baseline
+
+The Terraform stack is intentionally minimal and serves as a deployment reference, not a hardened production blueprint.
 
 ## Non-Goals
 
