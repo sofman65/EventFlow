@@ -25,3 +25,10 @@ htmlcov/
 
 # Java
 **/target/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars

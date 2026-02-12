@@ -49,6 +49,14 @@ Core endpoints:
 - Prometheus targets: `http://localhost:9090/targets`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 
+## Cloud Deployment
+
+Terraform deployment scaffold (AWS ECS + MSK + RDS + ECR) is available in:
+
+- [`infra/terraform/README.md`](infra/terraform/README.md)
+
+This stack is intentionally a practical baseline for demos/interviews and should be hardened for production.
+
 ## Why EventFlow Exists
 
 Most backend systems fail not because of scale, but because change becomes dangerous.

@@ -1,17 +1,19 @@
 import json
+import os
 from typing import Optional
 
 from confluent_kafka import Producer
 from app.schemas.events import PaymentAuthorizedEvent
 
+BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+TOPIC = os.getenv("EVENTFLOW_RAW_TOPIC", "events.raw.v1")
+
 producer = Producer(
     {
-        "bootstrap.servers": "localhost:9092",
+        "bootstrap.servers": BOOTSTRAP_SERVERS,
         "linger.ms": 5,
     }
 )
-
-TOPIC = "events.raw.v1"
 
 
 def delivery_report(err, msg):

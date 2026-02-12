@@ -1,0 +1,158 @@
+name: CD Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "release-*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag override"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME != '' && vars.PROJECT_NAME || 'eventflow' }}
+  DEPLOY_ENVIRONMENT: ${{ vars.DEPLOY_ENVIRONMENT != '' && vars.DEPLOY_ENVIRONMENT || 'dev' }}
+  TF_WORKING_DIR: infra/terraform
+
+jobs:
+  deploy:
+    name: Build, Push, and Terraform Apply
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cd-release-${{ vars.DEPLOY_ENVIRONMENT != '' && vars.DEPLOY_ENVIRONMENT || 'dev' }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.image_tag }}" ]]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+          else
+            IMAGE_TAG="${GITHUB_REF_NAME}"
+          fi
+
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "${GITHUB_ENV}"
+          echo "Using IMAGE_TAG=${IMAGE_TAG}"
+
+      - name: Validate required deployment configuration
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${{ secrets.PAYMENT_PROVIDER_WEBHOOK_SECRET }}" ]]; then
+            echo "Missing required secret: PAYMENT_PROVIDER_WEBHOOK_SECRET"
+            exit 1
+          fi
+
+          if [[ -z "${{ vars.TF_STATE_BUCKET }}" ]]; then
+            echo "Missing required repo variable: TF_STATE_BUCKET"
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.AWS_ROLE_TO_ASSUME }}" && ( -z "${{ secrets.AWS_ACCESS_KEY_ID }}" || -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ) ]]; then
+            echo "Set AWS_ROLE_TO_ASSUME (recommended) or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY secrets."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: eventflow-cd-${{ github.run_id }}
+
+      - name: Configure AWS credentials (access key fallback)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Write Terraform backend and variables
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+
+          cat > backend_override.tf <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+
+          TF_STATE_KEY="${{ vars.TF_STATE_KEY }}"
+          if [[ -z "${TF_STATE_KEY}" ]]; then
+            TF_STATE_KEY="${PROJECT_NAME}/${DEPLOY_ENVIRONMENT}/terraform.tfstate"
+          fi
+
+          cat > terraform.auto.tfvars <<EOF
+          aws_region   = "${AWS_REGION}"
+          project_name = "${PROJECT_NAME}"
+          environment  = "${DEPLOY_ENVIRONMENT}"
+
+          payment_provider_webhook_secret = "${{ secrets.PAYMENT_PROVIDER_WEBHOOK_SECRET }}"
+
+          image_tags = {
+            api_producer               = "${IMAGE_TAG}"
+            validator_consumer         = "${IMAGE_TAG}"
+            analytics_consumer         = "${IMAGE_TAG}"
+            persistence_consumer_java  = "${IMAGE_TAG}"
+            external_payment_simulator = "${IMAGE_TAG}"
+          }
+          EOF
+
+          INIT_ARGS=(
+            -input=false
+            -reconfigure
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+            -backend-config="key=${TF_STATE_KEY}"
+            -backend-config="region=${AWS_REGION}"
+          )
+
+          if [[ -n "${{ vars.TF_STATE_DYNAMODB_TABLE }}" ]]; then
+            INIT_ARGS+=("-backend-config=dynamodb_table=${{ vars.TF_STATE_DYNAMODB_TABLE }}")
+          fi
+
+          terraform init "${INIT_ARGS[@]}"
+
+      - name: Bootstrap ECR repositories
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform apply -auto-approve -input=false \
+            -target=aws_ecr_repository.service \
+            -target=aws_ecr_lifecycle_policy.service
+
+      - name: Build and push service images
+        run: |
+          ./scripts/build-and-push-images.sh \
+            --aws-region "${AWS_REGION}" \
+            --project-name "${PROJECT_NAME}" \
+            --environment "${DEPLOY_ENVIRONMENT}" \
+            --image-tag "${IMAGE_TAG}"
+
+      - name: Terraform apply (full stack)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Show deployment outputs
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform output alb_dns_name
+          terraform output api_webhook_url
