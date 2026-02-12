@@ -8,12 +8,15 @@ from typing import Any, Dict, Optional
 from confluent_kafka import Consumer, Producer
 from prometheus_client import Counter, Histogram, start_http_server
 
-BOOTSTRAP_SERVERS = "localhost:9092"
-CONSUMER_GROUP_ID = "validator-service"
-RAW_TOPIC = "events.raw.v1"
-VALIDATED_TOPIC = "events.validated.v1"
-DLQ_TOPIC = "events.dlq.v1"
-EXPECTED_EVENT_TYPE = "payment.authorized.v1"
+BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+CONSUMER_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "validator-service")
+RAW_TOPIC = os.getenv("EVENTFLOW_RAW_TOPIC", "events.raw.v1")
+VALIDATED_TOPIC = os.getenv("EVENTFLOW_VALIDATED_TOPIC", "events.validated.v1")
+DLQ_TOPIC = os.getenv("EVENTFLOW_DLQ_TOPIC", "events.dlq.v1")
+EXPECTED_EVENT_TYPE = os.getenv(
+    "EVENTFLOW_EXPECTED_EVENT_TYPE",
+    "payment.authorized.v1",
+)
 METRICS_PORT = int(os.getenv("VALIDATOR_METRICS_PORT", "8001"))
 
 VALIDATOR_EVENTS_CONSUMED = Counter(

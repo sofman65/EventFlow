@@ -1,0 +1,27 @@
+aws_region   = "us-east-1"
+project_name = "eventflow"
+environment  = "dev"
+
+# Change before real deployment.
+payment_provider_webhook_secret = "eventflow-cloud-secret-change-me"
+
+image_tags = {
+  api_producer               = "latest"
+  validator_consumer         = "latest"
+  analytics_consumer         = "latest"
+  persistence_consumer_java  = "latest"
+  external_payment_simulator = "latest"
+}
+
+service_desired_counts = {
+  api_producer               = 1
+  validator_consumer         = 1
+  analytics_consumer         = 1
+  persistence_consumer_java  = 1
+  external_payment_simulator = 1
+}
+
+simulator_auto_stream_enabled = true
+simulator_auto_stream_rps     = 3
+simulator_duplicate_rate      = 0.05
+simulator_corruption_rate     = 0.01
