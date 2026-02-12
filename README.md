@@ -64,6 +64,8 @@ Core endpoints:
 Terraform deployment scaffold (AWS ECS + MSK + RDS + ECR) is available in:
 
 - [`infra/terraform/README.md`](infra/terraform/README.md)
+- GitHub Actions CD setup (required repo vars/secrets) is documented in:
+  [`infra/terraform/README.md#release-cd-workflow`](infra/terraform/README.md#release-cd-workflow)
 
 This stack is intentionally a practical baseline for demos/interviews and should be hardened for production.
 
